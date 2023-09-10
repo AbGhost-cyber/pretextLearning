@@ -1,6 +1,9 @@
 import random
+
+import torch
 from PIL import Image
 from matplotlib import pyplot as plt
+from torch import nn
 from torch.utils.data import Dataset
 from torchvision import transforms, datasets
 
@@ -8,7 +11,7 @@ from torchvision import transforms, datasets
 # The goal of this dataset is to return:
 # 1) the original image, 2) patches of the original image and negative image
 class JigsawDataset(Dataset):
-    def __init__(self, imageFolderDataset, image_dim=224, shouldCenterCrop=True):
+    def __init__(self, imageFolderDataset, image_dim=224):
         self.imageFolderDataset = imageFolderDataset
         self.image_dim = image_dim
         self.image_transform = transforms.Compose([
@@ -86,22 +89,29 @@ class JigsawDataset(Dataset):
         return samples
 
 
-folder_dataset = datasets.ImageFolder(root="/Users/mac/research books/signature_research/data/faces/testing/")
-# folder_dataset = datasets.ImageFolder(root=folder_root)
-jigsawDataset = JigsawDataset(imageFolderDataset=folder_dataset)
-first_item = jigsawDataset[0]
-positive_image = first_item['original']
-patches = first_item['patches']
-negative_image = first_item['negative']
+# folder_dataset = datasets.ImageFolder(root="/Users/mac/research books/signature_research/data/faces/testing/")
+# # folder_dataset = datasets.ImageFolder(root=folder_root)
+# jigsawDataset = JigsawDataset(imageFolderDataset=folder_dataset)
+# first_item = jigsawDataset[0]
+# positive_image = first_item['original']
+# patches = first_item['patches']
+# negative_image = first_item['negative']
+#
+# plt.imshow(positive_image.permute(1, 2, 0), cmap='gray')
+# fig, axes = plt.subplots(3, 3, figsize=(7, 7))
+# for i, ax in enumerate(axes.flat):
+#     patch = patches[i].permute(1, 2, 0)  # Transpose the dimensions for plotting
+#     print(f"patch shape {patch.shape}")
+#     ax.imshow(patch, cmap='gray')  # cmap='gray'
+#     ax.axis('off')
+#
+# plt.show()
 
-plt.imshow(positive_image.permute(1, 2, 0), cmap='gray')
-fig, axes = plt.subplots(3, 3, figsize=(7, 7))
-for i, ax in enumerate(axes.flat):
-    patch = patches[i].permute(1, 2, 0)  # Transpose the dimensions for plotting
-    print(f"patch shape {patch.shape}")
-    ax.imshow(patch, cmap='gray')  # cmap='gray'
-    ax.axis('off')
+softplus = nn.Softplus()
 
-plt.show()
+input_tensor = torch.tensor([-5.0, 0.0, 5.0])
+output_tensor = softplus(input_tensor)
+
+print(output_tensor)
 if __name__ == '__main__':
     print()
