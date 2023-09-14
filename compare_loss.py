@@ -51,7 +51,7 @@ class OnlineContrastiveLoss(nn.Module):
             raise ValueError("Invalid negative selection method.")
 
         loss = torch.mean(
-            torch.max(torch.tensor(0.0), margin - anchor_positive_similarity + hardest_negatives)
+            torch.max(torch.tensor(0.0), self.margin - anchor_positive_similarity + hardest_negatives)
         )
 
         return loss
@@ -118,6 +118,37 @@ class CircleTripleLoss(nn.Module):
         return loss
 
 
+class CircleTripleLoss1(nn.Module):
+    def __init__(self, m: float, gamma: float) -> None:
+        super(CircleTripleLoss1, self).__init__()
+        self.m = m
+        self.gamma = gamma
+        self.soft_plus = nn.Softplus()
+
+    def forward(self, anchor: Tensor, positive: Tensor, negative: Tensor, labels: Tensor) -> Tensor:
+        labels_diff = labels.unsqueeze(1) - labels.unsqueeze(0)  # Compute label differences
+        mask_positive = labels_diff == 0  # Mask for positive pairs
+        mask_negative = labels_diff != 0  # Mask for negative pairs
+
+        dist_ap = euclidean_distance(anchor[mask_positive],
+                                     positive[mask_positive])  # Compute distance between anchor and positive
+        dist_an = euclidean_distance(anchor[mask_negative],
+                                     negative[mask_negative])  # Compute distance between anchor and negative
+
+        ap = torch.clamp_min(-dist_ap + self.m, min=0.)
+        an = torch.clamp_min(dist_an + self.m, min=0.)
+
+        delta_p = 1 - self.m
+        delta_n = self.m
+
+        logit_p = -ap * (dist_ap - delta_p) * self.gamma
+        logit_n = an * (dist_an - delta_n) * self.gamma
+
+        loss = torch.mean(self.soft_plus(torch.max(logit_n[mask_negative], torch.zeros_like(logit_p[mask_positive]))))
+
+        return loss
+
+
 class CircleLoss(nn.Module):
     def __init__(self, m: float, gamma: float) -> None:
         super(CircleLoss, self).__init__()
@@ -157,19 +188,17 @@ class CircleLoss(nn.Module):
 
 
 # Create random input tensors
-feat = F.normalize(torch.randn((256, 64), requires_grad=True))
-positive = F.normalize(torch.randn((256, 64), requires_grad=True))
-negative = F.normalize(torch.randn((256, 64), requires_grad=True))
+
 
 # Instantiate the TripletLoss
-margin = 1
-circle_loss = CircleTripleLoss(margin, 256)
-# Compute the loss
-loss = circle_loss(feat, positive, negative)
-
-# # Perform backward pass to compute gradients
-loss.backward()
-print(loss)
+# margin = 1
+# circle_loss = CircleTripleLoss(margin, 256)
+# # Compute the loss
+# loss = circle_loss(feat, positive, negative)
+#
+# # # Perform backward pass to compute gradients
+# loss.backward()
+# print(loss)
 #
 # # Access the gradients of each tensor
 # anchor_grad = feat.grad

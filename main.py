@@ -66,5 +66,7 @@ for epoch in range(epoch):
 show_plot(counter, loss_history)
 torch.save(network.state_dict(), "first.pt")
 
+ss = Network()
+
 if __name__ == '__main__':
     print()
