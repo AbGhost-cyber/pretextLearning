@@ -353,87 +353,34 @@ criterion = CircleLoss(m=1.2, gamma=1024)
 optimizer = optim.Adam(net.parameters(), lr=1e-5)
 scheduler = optim.lr_scheduler.StepLR(optimizer, 5, 0.1)
 
-counter = []
-loss_history = []
-iteration_number = 0
-num_epochs = 100
-net.train()
 
-print(len(siamese_dataset) // 32)
+# counter = []
+# loss_history = []
+# iteration_number = 0
+# num_epochs = 100
+# net.train()
+#
+# print(len(siamese_dataset) // 32)
+#
+# losses = []
+# accuracies = []
+#
+# for epoch in range(num_epochs):
+#     print('Epoch {}/{}'.format(epoch, num_epochs))
+#     print('Training', '-' * 20)
+#     train(net, optimizer, criterion, train_dataloader)
+#     print('Evaluating', '-' * 20)
+#     far, frr, acc = test_siamese_model(net, test_dataloader, 0.5)
+#     print(f"far: {far}")
+#     print(f"frr, {frr}")
+#     print(f"acc, {acc}")
+#     # loss, acc = eval(net, criterion, test_dataloader)
+#     # losses.append(loss)
+#     # accuracies.append(acc)
+#     # scheduler.step()
+# torch.save(net.state_dict(), "test1.pt")
 
-losses = []
-accuracies = []
 
-for epoch in range(num_epochs):
-    print('Epoch {}/{}'.format(epoch, num_epochs))
-    print('Training', '-' * 20)
-    train(net, optimizer, criterion, train_dataloader)
-    print('Evaluating', '-' * 20)
-    far, frr, acc = test_siamese_model(net, test_dataloader, 0.5)
-    print(f"far: {far}")
-    print(f"frr, {frr}")
-    print(f"acc, {acc}")
-    # loss, acc = eval(net, criterion, test_dataloader)
-    # losses.append(loss)
-    # accuracies.append(acc)
-    # scheduler.step()
-torch.save(net.state_dict(), "test1.pt")
-# plt.plot(losses)
-# # plt.plot(accuracies)
-# plt.show()
-# for epoch in range(100):
-#
-#     # Iterate over batches
-#     for i, (img0, img1, label) in enumerate(train_dataloader, 0):
-#
-#         # Zero the gradients
-#         optimizer.zero_grad()
-#
-#         # Pass in the two images into the network and obtain two outputs
-#         output1, output2 = net(img0, img1)
-#
-#         # Pass the outputs of the networks and label into the loss function
-#         loss_contrastive = criterion(output1, output2, label)
-#
-#         # Calculate the backpropagation
-#         loss_contrastive.backward()
-#
-#         # Optimize
-#         optimizer.step()
-#
-#         # Every 10 batches print out the loss
-#         if i % 10 == 0:
-#             print(f"Epoch number {epoch}\n Current loss {loss_contrastive.item()}\n")
-#             iteration_number += 10
-#
-#             counter.append(iteration_number)
-#             loss_history.append(loss_contrastive.item())
 
-# show_plot(counter, loss_history)
-
-# test_model = SiameseNetwork()
-# state_dict = torch.load('test.pt')
-# test_model.load_state_dict(state_dict)
-# test_model.eval()
-# # Locate the test dataset and load it into the SiameseNetworkDataset
-# folder_dataset_test = datasets.ImageFolder(root="/Users/mac/research books/signature_research/data/faces/testing/")
-# test_dataset = SiameseNetworkDataset(imageFolderDataset=folder_dataset_test,
-#                                      transform=transformation)
-# test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
-#
-# # Grab one image that we are going to test
-# dataiter = iter(test_dataloader)
-# x0, _, label = next(dataiter)
-#
-# for i in range(5):
-#     # Iterate over 5 images and test them with the first image (x0)
-#     _, x1, label2 = next(dataiter)
-#
-#     # Concatenate the two images together
-#     concatenated = torch.cat((x0, x1), 0)
-#
-#     output1, output2 = net(x0, x1)
-#     loss = euclidean_distance(output1, output2)
-#     imshow(torchvision.utils.make_grid(concatenated), f'Dissimilarity: {loss.item():.2f}')
 if __name__ == '__main__':
     print()

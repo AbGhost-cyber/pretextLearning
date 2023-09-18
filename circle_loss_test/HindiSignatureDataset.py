@@ -1,31 +1,33 @@
-import torch
-from sklearn.model_selection import train_test_split
-from torch import nn
+from sklearn.cluster import KMeans
 from torch.utils.data import Dataset
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import transforms
-import matplotlib.pyplot as plt
 from PIL import Image
 import random
 from torch.utils.data import random_split, DataLoader
+import torch
+import numpy as np
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-
-# random.seed(2023)
+random.seed(2023)
 
 
 def get_augmented_positive(genuine_image):
     aug_transform = transforms.Compose([
-        transforms.Resize((256, 256)),
+        transforms.CenterCrop((150, 600)),
+        transforms.Resize((110, 170)),
         transforms.Grayscale(),
-        # transforms.RandomAffine(degrees=0, translate=(0.2, 0.2)),
-        transforms.CenterCrop((100, 170)),
-        # transforms.GaussianBlur(kernel_size=5),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation((180, 180)),  # flip upside down
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor()
     ])
     return aug_transform(genuine_image)
 
 
-# image = Image.open("/Users/mac/Downloads/data/BHSig260/Hindi/001/H-S-1-F-01.tif")
+# image = Image.open("/Users/mac/Downloads/data/BHSig260/Hindi/001/H-S-1-F-04.tif")
 # augmented = get_augmented_positive(image)
 # result = augmented.permute(1, 2, 0)
 # plt.imshow(result, cmap='gray')
@@ -35,7 +37,7 @@ def get_augmented_positive(genuine_image):
 
 
 class HindiSignatureDataset(Dataset):
-    def __init__(self, imageFolder: ImageFolder, K_train: int = 100, K_test: int = 60, isTrain=False, transform=None):
+    def __init__(self, imageFolder: ImageFolder, K_train: int = 50, K_test: int = 50, isTrain=False, transform=None):
         super(HindiSignatureDataset, self).__init__()
         self.imageFolder = imageFolder
         self.forged_count = 30
@@ -57,24 +59,25 @@ class HindiSignatureDataset(Dataset):
 
         for sub_folder in self.train_sub_folders:
             mclass_index = self.imageFolder.class_to_idx[sub_folder]
-            image_paths = [imageFolder.imgs[i][0] for i in range(len(imageFolder)) if
+            image_paths = [imageFolder.imgs[i] for i in range(len(imageFolder)) if
                            imageFolder.imgs[i][1] == mclass_index]
             self.train_samples.extend(image_paths)
 
         for sub_folder in self.test_sub_folders:
             mclass_index = self.imageFolder.class_to_idx[sub_folder]
-            image_paths = [imageFolder.imgs[i][0] for i in range(len(imageFolder)) if
+            image_paths = [imageFolder.imgs[i] for i in range(len(imageFolder)) if
                            imageFolder.imgs[i][1] == mclass_index]
             self.test_samples.extend(image_paths)
 
     def __getitem__(self, index):
-        used_samples = self.train_samples if self.isTrain else self.test_samples
-        sub_folder_path = used_samples[index]
 
+        used_samples = self.train_samples if self.isTrain else self.test_samples
+        sample_index = random.randint(0, len(used_samples) - 1)
+        selected_sample = used_samples[sample_index]
         # Get the list of images in the selected sub-folder
         sub_folder_images = [
-            path for path, _ in self.imageFolder.imgs
-            if sub_folder_path in path
+            path for path, path_index in used_samples
+            if selected_sample[1] == path_index
         ]
 
         # Separate forged and genuine samples
@@ -102,13 +105,56 @@ data_transform = transforms.Compose([
     transforms.ToTensor()
 ])
 
-hindi_folder = ImageFolder(root="/Users/mac/Downloads/data/BHSig260/Hindi")
-hindiDataset = HindiSignatureDataset(imageFolder=hindi_folder, transform=None, isTrain=True)
-
-train_loader = DataLoader(hindiDataset, batch_size=64, shuffle=True)
-test_loader = DataLoader(hindiDataset, batch_size=64, shuffle=False)
+hindi_folder = ImageFolder(root="/Users/mac/Downloads/data/BHSig260/Bengali")
+hindiDataset = HindiSignatureDataset(imageFolder=hindi_folder, transform=None, isTrain=False)
+# genuine_image, augmented_genuine_image, forged_image = hindiDataset[0]
+# # train_loader = DataLoader(hindiDataset, batch_size=64, shuffle=True)
+# # test_loader = DataLoader(hindiDataset, batch_size=64, shuffle=False)
 print(f"size: {len(hindiDataset)}")
-print(len(train_loader))
-print(len(test_loader))
+
+# # Assuming you have a PyTorch model called 'model'
+# model.eval()
+# embeddings_anchor = []
+# embeddings_positive = []
+# embeddings_negative = []
+# with torch.no_grad():
+# for batch in dataloader:
+# anchor_inputs, positive_inputs, negative_inputs = batch # assuming you have a dataloader that provides triplets
+# anchor_outputs = model(anchor_inputs)
+# positive_outputs = model(positive_inputs)
+# negative_outputs = model(negative_inputs)
+# embeddings_anchor.append(anchor_outputs.numpy())
+# embeddings_positive.append(positive_outputs.numpy())
+# embeddings_negative.append(negative_outputs.numpy())
+# embeddings_anchor = np.concatenate(embeddings_anchor)
+# embeddings_positive = np.concatenate(embeddings_positive)
+# embeddings_negative = np.concatenate(embeddings_negative)
+# ```
+#
+# 2. Reduce the dimensionality of embeddings using t-SNE:
+# ```python
+# tsne = TSNE(n_components=2, random_state=0)
+# embeddings_anchor_2d = tsne.fit_transform(embeddings_anchor)
+# embeddings_positive_2d = tsne.fit_transform(embeddings_positive)
+# embeddings_negative_2d = tsne.fit_transform(embeddings_negative)
+# ```
+#
+# 3. Apply K-means clustering:
+# ```python
+# kmeans_anchor = KMeans(n_clusters=K) # K is the number of desired clusters
+# kmeans_positive = KMeans(n_clusters=K)
+# kmeans_negative = KMeans(n_clusters=K)
+# clusters_anchor = kmeans_anchor.fit_predict(embeddings_anchor_2d)
+# clusters_positive = kmeans_positive.fit_predict(embeddings_positive_2d)
+# clusters_negative = kmeans_negative.fit_predict(embeddings_negative_2d)
+# ```
+#
+# 4. Visualize the embeddings with cluster labels:
+# ```python
+# sns.set_palette("bright") # set color palette for clusters
+# sns.scatterplot(x=embeddings_anchor_2d[:, 0], y=embeddings_anchor_2d[:, 1], hue=clusters_anchor, palette="bright", label="Anchor")
+# sns.scatterplot(x=embeddings_positive_2d[:, 0], y=embeddings_positive_2d[:, 1], hue=clusters_positive, palette="bright", label="Positive")
+# sns.scatterplot(x=embeddings_negative_2d[:, 0], y=embeddings_negative_2d[:, 1], hue=clusters_negative, palette="bright", label="Negative")
+# plt.legend()
 if __name__ == '__main__':
     print()
