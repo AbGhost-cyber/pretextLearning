@@ -117,7 +117,7 @@ class CircleLoss(nn.Module):
         self.soft_plus = nn.Softplus()
 
     def forward(self, image1: Tensor, image2: Tensor, labels: Tensor) -> Tensor:
-        dist = euclidean_distance(image1, image2)  # Compute distance between image1 and image2
+        dist = cosine_distance(image1, image2)  # Compute distance between image1 and image2
 
         margin_pos = torch.clamp_min(-dist + self.m, min=0.)
         margin_neg = torch.clamp_min(dist - self.m, min=0.)
@@ -201,9 +201,13 @@ transformation = transforms.Compose([transforms.Resize((100, 100)),
                                      transforms.RandomResizedCrop(100),
                                      transforms.GaussianBlur(kernel_size=3),
                                      transforms.ToTensor(),
-                                     transforms.Normalize(mean=[mean], std=[std])
+                                     # transforms.Normalize(mean=[mean], std=[std])
                                      ])
 
+transformation_test = transforms.Compose([transforms.Resize((100, 100)),
+                                          transforms.ToTensor(),
+                                          # transforms.Normalize(mean=[mean], std=[std])
+                                          ])
 # Initialize the network
 siamese_dataset = SiameseNetworkDataset(imageFolderDataset=folder_dataset,
                                         transform=transformation)
@@ -219,35 +223,38 @@ class SiameseNetwork(nn.Module):
         # Setting up the Sequential of CNN Layers
         self.cnn1 = nn.Sequential(
             nn.Conv2d(1, 96, kernel_size=11, stride=4),
-            nn.Softplus(),
+            nn.BatchNorm2d(num_features=96),
+            nn.ReLU(),
             nn.MaxPool2d(3, stride=2),
             nn.Dropout(p=0.3),
 
             nn.Conv2d(96, 256, kernel_size=5, stride=1),
-            nn.Softplus(),
+            nn.BatchNorm2d(num_features=256),
+            nn.ReLU(),
             nn.MaxPool2d(2, stride=2),
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=0.5),
 
             nn.Conv2d(256, 384, kernel_size=3, stride=1),
+            nn.BatchNorm2d(num_features=384),
             nn.Softplus()
         )
 
         # Setting up the Fully Connected Layers
         self.fc1 = nn.Sequential(
-            nn.Linear(384, 1024),
-            nn.Softplus(),
+            nn.Linear(384, 2048),
+            nn.ReLU(),
             nn.Dropout(p=0.3),
 
-            nn.Linear(1024, 256),
-            nn.Softplus(),
-            nn.Dropout(p=0.3),
+            nn.Linear(2048, 1024),
+            nn.ReLU(),
+            nn.Dropout(p=0.5),
 
-            nn.Linear(256, 12)
+            nn.Linear(1024, 512)
         )
 
     def forward_once(self, x):
         # This function will be called for both images
-        # Its output is used to determine the similiarity
+        # Its output is used to determine the similarity
         output = self.cnn1(x)
         output = output.view(output.size()[0], -1)
         output = self.fc1(output)
@@ -292,95 +299,72 @@ class SiameseModel(nn.Module):
         return feat1, feat2
 
 
-@torch.no_grad()
-def test_siamese_model(siamese_model, dataloader, threshold):
-    siamese_model.eval()
-    """
-    Test a Siamese model and calculate FAR (False Acceptance Rate) and FRR (False Rejection Rate).
-
-    Args:
-        siamese_model (torch.nn.Module): The trained Siamese model.
-        test_dataset (torch.utils.data.Dataset): The dataset containing test pairs.
-        threshold (float): The threshold for classification.
-
-    Returns:
-        float: FAR (False Acceptance Rate)
-        float: FRR (False Rejection Rate)
-    """
-    far_count = 0
-    frr_count = 0
-    correct_count = 0
-    total_imposter_pairs = 0
-    total_genuine_pairs = 0
-
-    for batch_idx, (x1, x2, label) in enumerate(dataloader):
-
-        output1, output2 = siamese_model(x1, x2)
-        similarity = euclidean_distance(output1, output2)
-
-        if label == 0:  # Imposter pair
-            total_imposter_pairs += 1
-            if similarity <= threshold:
-                far_count += 1
-        else:  # Genuine pair
-            total_genuine_pairs += 1
-            if similarity > threshold:
-                frr_count += 1
-
-        # Calculate accuracy
-        if (similarity > threshold and label == 1) or (similarity <= threshold and label == 0):
-            correct_count += 1
-
-    far = far_count / total_imposter_pairs
-    frr = frr_count / total_genuine_pairs
-    accuracy = correct_count / (total_imposter_pairs + total_genuine_pairs)
-
-    return far, frr, accuracy
-
-
 # Load the training dataset
 train_dataloader = DataLoader(siamese_dataset,
                               shuffle=True,
                               batch_size=64)
 folder_dataset_test = datasets.ImageFolder(root="/Users/mac/research books/signature_research/data/faces/testing/")
 test_dataset = SiameseNetworkDataset(imageFolderDataset=folder_dataset_test,
-                                     transform=transformation)
+                                     transform=transformation_test)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-net = SiameseModel()
-criterion = CircleLoss(m=1.2, gamma=1024)
-# criterion = ContrastiveLoss(margin=2)
-# optimizer = optim.RMSprop(net.parameters(), lr=1e-7, eps=1e-8, weight_decay=5e-4, momentum=0.9)
-optimizer = optim.Adam(net.parameters(), lr=1e-5)
-scheduler = optim.lr_scheduler.StepLR(optimizer, 5, 0.1)
+net = SiameseNetwork()
+criterion = CircleLoss(m=0.25, gamma=512)
+optimizer = optim.Adam(net.parameters(), lr=1e-6)
+# scheduler = optim.lr_scheduler.StepLR(optimizer, 5, 0.1)
 
+counter = []
+loss_history = []
+iteration_number = 0
+num_epochs = 100
+net.train()
 
-# counter = []
-# loss_history = []
-# iteration_number = 0
-# num_epochs = 100
-# net.train()
+print(len(siamese_dataset) // 32)
+
+losses = []
+accuracies = []
+
+for epoch in range(num_epochs):
+    print('Epoch {}/{}'.format(epoch, num_epochs))
+    print('Training', '-' * 20)
+    running_loss = 0
+    number_samples = 0
+
+    for batch_idx, (x1, x2, y) in enumerate(train_dataloader):
+        # x1, x2, y = x1.to(device), x2.to(device), y.to(device)
+
+        optimizer.zero_grad()
+        x1, x2 = net(x1, x2)
+        loss = criterion(x1, x2, y)
+        loss.backward()
+        optimizer.step()
+
+        number_samples += len(x1)
+        running_loss += loss.item() * len(x1)
+        if (batch_idx + 1) % 1 == 0 or batch_idx == len(train_dataloader) - 1:
+            print('{}/{}: Loss: {:.4f}'.format(batch_idx + 1, len(train_dataloader), running_loss / number_samples))
+            running_loss = 0
+            number_samples = 0
+            # losses.append(loss.item())
+torch.save(net.state_dict(), "test2.pt")
 #
-# print(len(siamese_dataset) // 32)
+# my_siamese_model = SiameseNetwork()
+# state_dict = torch.load('test2.pt')
+# my_siamese_model.load_state_dict(state_dict)
+# my_siamese_model.eval()
+# #
+# # Grab one image that we are going to test
+# dataiter = iter(test_dataloader)
+# x0, _, label1 = next(dataiter)
+# my_siamese_model.eval()
+# for i in range(15):
+#     # Iterate over 5 images and test them with the first image (x0)
+#     _, x1, label2 = next(dataiter)
 #
-# losses = []
-# accuracies = []
+#     # Concatenate the two images together
+#     concatenated = torch.cat((x0, x1), 0)
 #
-# for epoch in range(num_epochs):
-#     print('Epoch {}/{}'.format(epoch, num_epochs))
-#     print('Training', '-' * 20)
-#     train(net, optimizer, criterion, train_dataloader)
-#     print('Evaluating', '-' * 20)
-#     far, frr, acc = test_siamese_model(net, test_dataloader, 0.5)
-#     print(f"far: {far}")
-#     print(f"frr, {frr}")
-#     print(f"acc, {acc}")
-#     # loss, acc = eval(net, criterion, test_dataloader)
-#     # losses.append(loss)
-#     # accuracies.append(acc)
-#     # scheduler.step()
-# torch.save(net.state_dict(), "test1.pt")
-
-
-
+#     output1, output2 = my_siamese_model(x0, x1)
+#     distance = cosine_distance(output1, output2)
+#     imshow(torchvision.utils.make_grid(concatenated), f'Dissimilarity: {distance.item():.2f}')
 if __name__ == '__main__':
     print()
