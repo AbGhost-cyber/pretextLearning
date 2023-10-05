@@ -201,7 +201,7 @@ transformation = transforms.Compose([transforms.Resize((100, 100)),
                                      transforms.RandomResizedCrop(100),
                                      transforms.GaussianBlur(kernel_size=3),
                                      transforms.ToTensor(),
-                                     # transforms.Normalize(mean=[mean], std=[std])
+                                     transforms.Normalize(mean=[mean], std=[std])
                                      ])
 
 transformation_test = transforms.Compose([transforms.Resize((100, 100)),
@@ -223,80 +223,54 @@ class SiameseNetwork(nn.Module):
         # Setting up the Sequential of CNN Layers
         self.cnn1 = nn.Sequential(
             nn.Conv2d(1, 96, kernel_size=11, stride=4),
-            nn.BatchNorm2d(num_features=96),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
-            nn.Dropout(p=0.3),
 
             nn.Conv2d(96, 256, kernel_size=5, stride=1),
-            nn.BatchNorm2d(num_features=256),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(2, stride=2),
-            nn.Dropout(p=0.5),
 
             nn.Conv2d(256, 384, kernel_size=3, stride=1),
-            nn.BatchNorm2d(num_features=384),
-            nn.Softplus()
+            nn.ReLU(inplace=True)
         )
 
         # Setting up the Fully Connected Layers
         self.fc1 = nn.Sequential(
-            nn.Linear(384, 2048),
-            nn.ReLU(),
-            nn.Dropout(p=0.3),
+            nn.Linear(384, 1024),
+            nn.ReLU(inplace=True),
 
-            nn.Linear(2048, 1024),
-            nn.ReLU(),
-            nn.Dropout(p=0.5),
+            nn.Linear(1024, 256),
+            nn.ReLU(inplace=True),
 
-            nn.Linear(1024, 512)
+            nn.Linear(256, 128)
+        )
+
+        self.last_layer = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
         )
 
     def forward_once(self, x):
         # This function will be called for both images
-        # Its output is used to determine the similarity
+        # Its output is used to determine the similiarity
         output = self.cnn1(x)
         output = output.view(output.size()[0], -1)
         output = self.fc1(output)
         return output
 
-    def forward(self, input1, input2):
-        # In this function we pass in both images and obtain both vectors
-        # which are returned
-        output1 = self.forward_once(input1)
-        output2 = self.forward_once(input2)
-
-        return output1, output2
-
-
-class SiameseModel(nn.Module):
-    def __init__(self):
-        super(SiameseModel, self).__init__()
-
-        # Load the pretrained ResNet-18 model
-        self.backbone = models.resnet18(pretrained=True)
-        for params in self.backbone.parameters():
-            params.requires_grad = False
-
-        # Modify the first convolutional layer for grayscale images
-        self.backbone.conv1 = nn.Conv2d(
-            in_channels=1,  # Set the number of input channels to 1 for grayscale
-            out_channels=64,
-            kernel_size=(7, 7),
-            stride=(2, 2),
-            padding=(3, 3),
-            bias=False
-        )
-
-        # Remove the fully connected layer
-        self.backbone.fc = nn.Identity()
-
-    def forward(self, img1, img2):
-        # Extract features from the backbone
-        feat1 = self.backbone(img1)
-        feat2 = self.backbone(img2)
-
-        return feat1, feat2
+    def forward(self, image1, image2):
+        z1 = self.forward_once(image1)
+        z2 = self.forward_once(image2)
+        # z1 = self.dropout(z1)  # Apply dropout to z1
+        # z2 = self.dropout(z2)  # Apply dropout to z2
+        concatenated = torch.cat((z1, z2), dim=1)
+        # Predict similarity using fully connected layers
+        similarity = self.last_layer(concatenated)
+        return similarity
 
 
 # Load the training dataset
@@ -333,8 +307,8 @@ for epoch in range(num_epochs):
         # x1, x2, y = x1.to(device), x2.to(device), y.to(device)
 
         optimizer.zero_grad()
-        x1, x2 = net(x1, x2)
-        loss = criterion(x1, x2, y)
+        prob = net(x1, x2)
+        loss = criterion(prob, y)
         loss.backward()
         optimizer.step()
 
@@ -346,25 +320,5 @@ for epoch in range(num_epochs):
             number_samples = 0
             # losses.append(loss.item())
 torch.save(net.state_dict(), "test2.pt")
-#
-# my_siamese_model = SiameseNetwork()
-# state_dict = torch.load('test2.pt')
-# my_siamese_model.load_state_dict(state_dict)
-# my_siamese_model.eval()
-# #
-# # Grab one image that we are going to test
-# dataiter = iter(test_dataloader)
-# x0, _, label1 = next(dataiter)
-# my_siamese_model.eval()
-# for i in range(15):
-#     # Iterate over 5 images and test them with the first image (x0)
-#     _, x1, label2 = next(dataiter)
-#
-#     # Concatenate the two images together
-#     concatenated = torch.cat((x0, x1), 0)
-#
-#     output1, output2 = my_siamese_model(x0, x1)
-#     distance = cosine_distance(output1, output2)
-#     imshow(torchvision.utils.make_grid(concatenated), f'Dissimilarity: {distance.item():.2f}')
 if __name__ == '__main__':
     print()

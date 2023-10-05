@@ -1,7 +1,14 @@
+import lightly
 import torch
+from lightly.data import SimCLRCollateFunction
+from lightly.models.modules import NNCLRPredictionHead
 from torch import nn
 import numpy as np
 
+collate_fn = SimCLRCollateFunction(
+    input_size=32,
+    gaussian_blur=0.,
+)
 # cnn1 = nn.Sequential(
 #     nn.Conv2d(1, 96, kernel_size=11, stride=2),
 #     nn.ReLU(inplace=True),
@@ -44,6 +51,7 @@ import numpy as np
 # Mean and standard deviation estimated by the actor network
 mean = 0.5
 std = 1
+NNCLRPredictionHead()
 
 # Sample a value from a standard Normal distribution
 epsilon = np.random.normal(0, 1)

@@ -81,27 +81,38 @@ def euclidean_distance(x1: Tensor, x2: Tensor) -> Tensor:
 
 
 class CircleLoss(nn.Module):
-    def __init__(self, m: float, gamma: float) -> None:
+    def __init__(self, scale=32, margin=0.25, similarity='dot'):
         super(CircleLoss, self).__init__()
-        self.m = m
-        self.gamma = gamma
-        self.soft_plus = nn.Softplus()
+        self.scale = scale
+        self.margin = margin
+        self.similarity = similarity
 
-    def forward(self, image1: Tensor, image2: Tensor, labels: Tensor) -> Tensor:
-        dist = cosine_similarity(image1, image2)  # Compute distance between image1 and image2
+    def forward(self, genuine, forged):
+        if self.similarity == 'dot':
+            sim = self.dot_similarity(genuine, forged)
+        elif self.similarity == 'cos':
+            sim = self.cosine_similarity(genuine, forged)
+        else:
+            raise ValueError('This similarity is not implemented.')
 
-        margin_pos = torch.clamp_min(-dist + self.m, min=0.)
-        margin_neg = torch.clamp_min(dist - self.m, min=0.)
+        alpha = F.relu(self.margin - sim)
+        logit = self.scale * alpha * (sim - self.margin)
 
-        delta_pos = 1 - self.m
-        delta_neg = self.m
+        label = torch.ones_like(logit)
 
-        logit_pos = -margin_pos * (dist - delta_pos) * self.gamma
-        logit_neg = margin_neg * (dist - delta_neg) * self.gamma
-
-        loss = torch.mean(self.soft_plus((logit_neg - logit_pos)))
+        loss = F.binary_cross_entropy_with_logits(logit, label)
 
         return loss
+
+    def dot_similarity(self, x, y):
+        return torch.matmul(x.view(x.size(0), -1), y.view(y.size(0), -1).t())
+
+    def cosine_similarity(self, x, y):
+        x = x.view(x.size(0), -1)
+        y = y.view(y.size(0), -1)
+        x_norm = F.normalize(x, p=2, dim=1)
+        y_norm = F.normalize(y, p=2, dim=1)
+        return torch.matmul(x_norm, y_norm.t())
 
 
 def cosine_similarity(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -126,7 +137,7 @@ class CircleLossWithoutLabels(nn.Module):
         self.m = m
         self.gamma = gamma
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         dist = dot_similarity(x, y)  # Compute distance between image1 and image2
 
         margin_pos = torch.clamp_min(-dist + self.m, min=0.)
@@ -138,15 +149,8 @@ class CircleLossWithoutLabels(nn.Module):
         logit_pos = -margin_pos * (dist - delta_pos) * self.gamma
         logit_neg = margin_neg * (dist - delta_neg) * self.gamma
 
-        # loss = torch.mean(self.soft_plus((logit_neg - logit_pos)))
-
         label_p = torch.ones_like(logit_pos)
         label_n = torch.zeros_like(logit_neg)
-
-        # label = label.squeeze(1)
-
-        # loss_p = F.binary_cross_entropy_with_logits(logit_p, label_p * label)
-        # loss_n = F.binary_cross_entropy_with_logits(logit_n, label_n * (1 - label))
 
         labels = torch.cat([label_p, label_n], dim=0)
         logits = torch.cat([logit_pos, logit_neg], dim=0)
@@ -155,57 +159,6 @@ class CircleLossWithoutLabels(nn.Module):
         mean_loss = loss.mean()
 
         return mean_loss
-
-
-class SiameseNetwork(nn.Module):
-
-    def __init__(self):
-        super(SiameseNetwork, self).__init__()
-
-        # Setting up the Sequential of CNN Layers
-        self.cnn1 = nn.Sequential(
-            nn.Conv2d(1, 96, kernel_size=11, stride=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, stride=2),
-            nn.Dropout(p=0.3),
-
-            nn.Conv2d(96, 256, kernel_size=5, stride=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),
-            nn.Dropout(p=0.3),
-
-            nn.Conv2d(256, 384, kernel_size=3, stride=1),
-            nn.ReLU(inplace=True),
-        )
-
-        # Setting up the Fully Connected Layers
-        self.fc1 = nn.Sequential(
-            nn.Linear(384 * 7 * 7, 1024),
-            nn.ReLU(),
-            nn.Dropout(p=0.3),
-
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Dropout(p=0.5),
-
-            nn.Linear(512, 256)
-        )
-
-    def forward_once(self, x):
-        # This function will be called for both images
-        # Its output is used to determine the similarity
-        output = self.cnn1(x)
-        output = output.view(output.size()[0], -1)
-        output = self.fc1(output)
-        return output
-
-    def forward(self, input1, input2):
-        # In this function we pass in both images and obtain both vectors
-        # which are returned
-        output1 = self.forward_once(input1)
-        output2 = self.forward_once(input2)
-
-        return output1, output2
 
 
 class NNCLR(nn.Module):
@@ -224,44 +177,26 @@ class NNCLR(nn.Module):
         return z, p
 
 
-class SiameseModel(nn.Module):
-    def __init__(self):
-        super(SiameseModel, self).__init__()
+class SiameseNetwork(nn.Module):
+    def __init__(self, nnclr_model):
+        super().__init__()
+        self.nnclr_model = nnclr_model
+        self.backbone = nnclr_model.backbone
 
-        # Load the pretrained ResNet-18 model
-        self.backbone = models.resnet18(pretrained=True)
-        for params in self.backbone.parameters():
-            params.requires_grad = False
-
-        # Modify the first convolutional layer for grayscale images
-        self.backbone.conv1 = nn.Conv2d(
-            in_channels=1,  # Set the number of input channels to 1 for grayscale
-            out_channels=64,
-            kernel_size=(7, 7),
-            stride=(2, 2),
-            padding=(3, 3),
-            bias=False
-        )
-
-        # Remove the fully connected layer
-        self.backbone.fc = nn.LazyLinear(128)
-
-    def forward(self, img1, img2):
-        # Extract features from the backbone
-        feat1 = self.backbone(img1)
-        feat2 = self.backbone(img2)
-
-        return feat1, feat2
+    def forward(self, image1, image2):
+        z1 = self.backbone(image1).flatten(start_dim=1)
+        z2 = self.backbone(image2).flatten(start_dim=1)
+        return z1, z2
 
 
-resnet = torchvision.models.resnet50()
+resnet = torchvision.models.resnet18()
 backbone = nn.Sequential(*list(resnet.children())[:-1])
 model = NNCLR(backbone)
 mean = 0.2062
 std = 0.1148
 normalize_dict = {'mean': [mean], 'std': [std]}
 transform = SimCLRTransform(input_size=100, normalize=normalize_dict)
-memory_bank = NNMemoryBankModule(size=4096)
+memory_bank = NNMemoryBankModule(size=2048)
 # transform = transforms.Compose([
 #     transforms.Resize((100, 100)),
 #     transforms.RandomHorizontalFlip(),
@@ -306,10 +241,11 @@ folder_dataset_test = datasets.ImageFolder(root="/Users/mac/research books/signa
 # Create a new optimizer for the prediction head
 
 # Define the optimizer
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+# optimizer = torch.optim.SGD(model.parameters(), lr=3e-2)
 
 # Define the learning rate scheduler
-# scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=12)
+# optimizer = torch.optim.SGD(model.parameters(), lr=3e-2)
+# scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
 # print("Starting Training")
 # for epoch in range(100):
 #     total_loss = 0
@@ -329,25 +265,28 @@ folder_dataset_test = datasets.ImageFolder(root="/Users/mac/research books/signa
 #
 # concatenated = torch.cat((example_batch[0], example_batch[1]), 0)
 # imshow(torchvision.utils.make_grid(concatenated))
-criterion = NTXentLoss(temperature=1)
-optimizer = torch.optim.SGD(model.parameters(), lr=0.005)
+criterion = NTXentLoss(temperature=0.1)
+optimizer = torch.optim.SGD(model.parameters(), lr=3e-2)
+scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+# lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
 
 print("Starting Training")
-for epoch in range(20):
+for epoch in range(100):
     total_loss = 0
     for batch in dataloader:
         x0, x1 = batch[0]
         z0, p0 = model(x0)
         z1, p1 = model(x1)
+        optimizer.zero_grad()
         z0 = memory_bank(z0, update=False)  # for retrieval hence false
         z1 = memory_bank(z1, update=True)
         loss = 0.5 * (criterion(z0, p1) + criterion(z1, p0))
         total_loss += loss.detach()
         loss.backward()
         optimizer.step()
-        optimizer.zero_grad()
     avg_loss = total_loss / len(dataloader)
     print(f"epoch: {epoch:>02}, loss: {avg_loss:.5f}")
+    scheduler.step()
 
 torch.save(model.state_dict(), "test4.pt")
 
