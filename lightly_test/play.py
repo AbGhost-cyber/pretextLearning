@@ -8,6 +8,7 @@ import numpy as np
 collate_fn = SimCLRCollateFunction(
     input_size=32,
     gaussian_blur=0.,
+    random_gray_scale=1
 )
 # cnn1 = nn.Sequential(
 #     nn.Conv2d(1, 96, kernel_size=11, stride=2),
