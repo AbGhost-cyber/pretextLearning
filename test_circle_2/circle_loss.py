@@ -1,6 +1,7 @@
 from typing import Tuple
 
 import torch
+from matplotlib import pyplot as plt
 from torch import Tensor, nn
 
 
@@ -49,31 +50,46 @@ class CircleLoss(nn.Module):
         return loss
 
 
-# def cosine_similarity(features_p):
-#     import torch.nn.functional as F
-#
-#     # Normalize feature vectors to have unit length
-#     features_p = F.normalize(features_p, dim=1)
-#
-#     # Calculate dot products between feature vectors
-#     dot_products = torch.matmul(features_p, features_p.t())
-#
-#     # Calculate magnitudes of feature vectors
-#     magnitudes = torch.norm(features_p, dim=1, keepdim=True)
-#
-#     # Calculate pairwise cosine similarity
-#     similarity_scores = dot_products / torch.matmul(magnitudes, magnitudes.t())
-#
-#     return similarity_scores
+# Create a random input tensor and labels
 
+# Create a random input tensor and labels
+input_tensor = torch.rand(256, 32, requires_grad=True)  # Set requires_grad=True
+labels = torch.randint(high=32, size=(256,))  # Assuming binary labels for simplicity
+ll = torch.tensor([[1], [1]])
+print(input_tensor.shape)
+print(labels.shape)
+print(ll.shape)
 
-# features_p = torch.tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=torch.float)
-# features_n = torch.tensor([[1, 2, 4], [4, 5, 4], [7, 8, 4]], dtype=torch.float)
-# sp = cosine_similarity(features_p)
-# sn = cosine_similarity(features_n)
-# criterion = CircleLoss(m=0.25, gamma=32)
-# loss = criterion(sp, sn)
-# print(loss)
+# Normalize the input tensor
+input_normed = nn.functional.normalize(input_tensor)
+
+# Create an instance of CircleLoss
+loss_fn = CircleLoss(m=0.25, gamma=1.0)
+
+# Compute the similarity and dissimilarity pairs
+sp, sn = convert_label_to_similarity(input_normed, labels)
+
+# Compute the loss
+loss = loss_fn(sp, sn)
+
+# Compute gradients
+loss.backward()
+
+# Get the gradients of the input tensor
+grads = input_tensor.grad
+
+# Normalize gradients
+grads_normalized = (grads - grads.min()) / (grads.max() - grads.min())
+
+# Plot the input tensor with overlaid gradients
+fig, (ax1, ax2) = plt.subplots(1, 2)
+ax1.imshow(input_tensor.squeeze().detach().cpu().numpy(), cmap='gray')
+ax1.set_title('Input Tensor')
+ax1.axis('off')
+ax2.imshow(grads_normalized.squeeze().detach().cpu().numpy(), cmap='gray')
+ax2.set_title('Gradients')
+ax2.axis('off')
+plt.show()
 
 if __name__ == '__main__':
     print()

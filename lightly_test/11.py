@@ -20,6 +20,23 @@ import matplotlib.pyplot as plt
 #
 # # Show the plot
 # plt.show()
-label = "001"
+import torch
+
+# Create two input tensors
+a = torch.tensor([[1, 2, 3],
+                  [4, 5, 6]])
+b = torch.tensor([[7, 8, 9],
+                  [10, 11, 12]])
+
+# Normalize the input tensors
+a_normed = torch.nn.functional.normalize(a, dim=1)
+b_normed = torch.nn.functional.normalize(b, dim=1)
+
+# Compute the similarity matrix using einsum
+similarity_matrix = torch.einsum("nd,md->nm", a_normed, b_normed)
+
+# print(similarity_matrix)
+
 if __name__ == '__main__':
-    print(int(label))
+    print()
+    # print(int(label))

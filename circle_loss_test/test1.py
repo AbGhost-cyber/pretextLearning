@@ -292,7 +292,7 @@ def evaluate(model, criterion, dataloader, log_interval=50):
     return running_loss / number_samples, average_precision
 
 
-test_loader = DataLoader(test_hindiDataset, batch_size=40, shuffle=False)
+test_loader = DataLoader(test_hindiDataset, batch_size=40, shuffle=False, drop_last=True)
 print(len(test_hindiDataset))
 
 if __name__ == '__main__':

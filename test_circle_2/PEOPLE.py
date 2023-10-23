@@ -124,7 +124,7 @@ class SiameseNetwork(nn.Module):
 
 model = SiameseNetwork()
 train_loader = get_loader(is_train=True, batch_size=64)
-# optimizer = torch.optim.Adam(lr=6e-5, params=model.parameters())
+optimizer = torch.optim.Adam(lr=6e-5, params=model.parameters())
 # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
 optimizer = torch.optim.RMSprop(model.parameters(), lr=6e-2, eps=1e-8, weight_decay=5e-4, momentum=0.9)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 5, 0.1)

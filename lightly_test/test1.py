@@ -268,6 +268,7 @@ folder_dataset_test = datasets.ImageFolder(root="/Users/mac/research books/signa
 criterion = NTXentLoss(temperature=0.1)
 optimizer = torch.optim.SGD(model.parameters(), lr=3e-2)
 scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+models.resnet18()
 # lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
 
 print("Starting Training")

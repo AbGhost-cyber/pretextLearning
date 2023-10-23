@@ -149,3 +149,5 @@ for epoch in range(num_epochs):
 
 # Save the trained model
 torch.save(model.state_dict(), "NNCLR_200_epochs_test.pt")
+
+
