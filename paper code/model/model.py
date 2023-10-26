@@ -1,5 +1,6 @@
 import torch
 from byol_pytorch.byol_pytorch import MaybeSyncBatchnorm
+from lightly.models import BYOL
 from torch import nn
 import torch.nn.functional as F
 
@@ -45,11 +46,13 @@ class BYOLSiamNet(nn.Module):
             z1_relu = F.relu(z1)
             z2_relu = F.relu(z2)
             diff = torch.subtract(z1_relu, z2_relu)
-            diff = F.normalize(diff, dim=1, p=2)
-            sim = self.fc(diff)
+            diff = nn.functional.normalize(diff, p=2)
+            sim = self.sim_sam_mlp(diff)
             return sim
 
-        z1 = self.fc(z1)
-        z2 = self.fc(z2)
+        z1 = self.sim_sam_mlp(z1)
+        z2 = self.sim_sam_mlp(z2)
 
+        z1 = nn.functional.normalize(z1, p=2)
+        z2 = nn.functional.normalize(z2, p=2)
         return z1, z2
